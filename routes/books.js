@@ -16,11 +16,22 @@ router.get('/books', (_req, res, next) => {
   });
 });
 
+router.use('/books/:id', (req, res, next) => {
+  if (isNaN(req.params.id) || req.params.id < 0) {
+    return res.sendStatus(404);
+  }
+
+  next();
+});
+
 router.get('/books/:id', (req, res, next) => {
   knex('books')
     .where('id', req.params.id)
     .first()
   .then((book) => {
+    if (!book) {
+      return next();
+    }
     res.send(camelizeKeys(book));
   })
   .catch((err) => {
@@ -29,6 +40,30 @@ router.get('/books/:id', (req, res, next) => {
 });
 
 router.post('/books', (req, res, next) => {
+  const missing = function(part) {
+    const err = new Error(`${part} must not be blank`);
+
+    err.output = { statusCode: 400 };
+
+    return next(err);
+  };
+
+  if (!('title' in req.body)) {
+    missing('Title');
+  }
+  if (!('author' in req.body)) {
+    missing('Author');
+  }
+  if (!('genre' in req.body)) {
+    missing('Genre');
+  }
+  if (!('description' in req.body)) {
+    missing('Description');
+  }
+  if (!('coverUrl' in req.body)) {
+    missing('Cover URL');
+  }
+
   knex('books')
     .insert({
       title: req.body.title,
@@ -51,9 +86,9 @@ router.patch('/books/:id', (req, res, next) => {
     .first()
     .then((book) => {
       if (!book) {
-        const err = new Error('book not found');
+        const err = new Error('Not Found');
 
-        err.statusCode = 400;
+        err.output = { statusCode: 404 };
 
         throw err;
       }
@@ -78,17 +113,24 @@ router.patch('/books/:id', (req, res, next) => {
 
 router.delete('/books/:id', (req, res, next) => {
   knex('books')
-    .del('*')
     .where('id', req.params.id)
+    .first()
     .then((row) => {
       if (!row) {
-        return next();
+        const err = new Error('Not Found');
+
+        err.output = { statusCode: 404 };
+
+        throw err;
       }
 
-      const book = row[0];
-
-      delete book.id;
-      res.send(camelizeKeys(book));
+      return knex('books')
+        .del('*')
+        .where('id', req.params.id);
+    })
+    .then((books) => {
+      delete books[0].id;
+      res.send(camelizeKeys(books[0]));
     })
     .catch((err) => {
       next(err);
